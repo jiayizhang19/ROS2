@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from moveit_msgs.action import MoveGroup
-from moveit_msgs.msg import MotionPlanRequest, Constraints, PositionConstraint, OrientationConstraint
+from moveit_msgs.msg import MotionPlanRequest, Constraints, PositionConstraint, OrientationConstraint, JointConstraint
 from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import PoseStamped, Quaternion
 
@@ -15,13 +15,18 @@ class MoveItEEClient(Node):
         while not self._client.wait_for_server(1.0):
             self.get_logger().warning('Waiting for Action Server ...')
 
-        self.group_name = 'interbotix_arm'
+        self.group_name_arm= 'interbotix_arm'
+        self.group_name_gripper= 'interbotix_gripper'
         self.ee_link = 'rx200/ee_gripper_link'
         self.base_link = 'rx200/base_link'
+        self.gripper_joint = 'left_finger'
+        
+        self.declare_parameter('start_state_gripper_open', value=True)
+        self.send_gr_pose(self.get_parameter('start_state_gripper_open').value)
 
         self.get_logger().info('Node initialized successfully!')
     
-    def send_pose(self, x, y, z, w=1.0):
+    def send_ee_pose(self, x, y, z, w=1.0):
         pose = PoseStamped()
         pose.header.frame_id = self.base_link # refenence to base_link
         pose.pose.position.x = x
@@ -30,7 +35,7 @@ class MoveItEEClient(Node):
         pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=w)
 
         req = MotionPlanRequest()
-        req.group_name = self.group_name 
+        req.group_name = self.group_name_arm
         req.allowed_planning_time = 5.0
         req.num_planning_attempts = 3
 
@@ -69,6 +74,30 @@ class MoveItEEClient(Node):
             )
         send_future.add_done_callback(self._goal_response_cb)
 
+    def send_gr_pose(self, open=True):
+        req = MotionPlanRequest()
+        req.group_name = self.group_name_gripper
+        req.allowed_planning_time = 2.0
+        req.num_planning_attempts = 1
+
+        jc = JointConstraint()
+        jc.joint_name = self.gripper_joint
+        jc.position = 0.035 if open else 0.0
+        jc.tolerance_above = 0.01
+        jc.tolerance_below = 0.01
+        jc.weight = 1.0
+
+        goal_constraints = Constraints()
+        goal_constraints.joint_constraints = [jc]
+        req.goal_constraints = [goal_constraints]
+
+        goal = MoveGroup.Goal()
+        goal.request = req
+        goal.planning_options.plan_only = False 
+
+        send_future = self._client.send_goal_async(goal)
+        send_future.add_done_callback(self._goal_response_cb)
+
     def _goal_response_cb(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
@@ -92,7 +121,12 @@ class MoveItEEClient(Node):
 def main():
     rclpy.init()
     node = MoveItEEClient()
-    node.send_pose(0.25, 0.0, 0.15)  # single EE pose
+    node.send_ee_pose(0.15, 0.0, 0.25)  # single EE pose
+    node.send_ee_pose(3.0, 1.0, 5.0)  # single EE pose
+    # node.send_ee_pose(3.0, 1.0, 1.0)  # single EE pose
+    # node.send_ee_pose(2.0, 1.5, 1.0)  # single EE pose
+
+    node.send_gr_pose(open=True)  # open gripper
     rclpy.spin(node)
     rclpy.shutdown()
 
