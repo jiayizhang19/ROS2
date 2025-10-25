@@ -20,13 +20,14 @@ class MoveItEEClient(Node):
         self.ee_link = 'rx200/ee_gripper_link'
         self.base_link = 'rx200/base_link'
         self.gripper_joint = 'left_finger'
+        self.safe_pose = (0.15, 0.0, 0.25) # define a safe pose
         
         self.declare_parameter('start_state_gripper_open', value=True)
         self.send_gr_pose(self.get_parameter('start_state_gripper_open').value)
 
         self.get_logger().info('Node initialized successfully!')
     
-    def send_ee_pose(self, x, y, z, w=1.0):
+    def send_ee_pose(self, x, y, z, w=1.0, task=None):
         pose = PoseStamped()
         pose.header.frame_id = self.base_link # refenence to base_link
         pose.pose.position.x = x
@@ -110,10 +111,21 @@ class MoveItEEClient(Node):
         state = getattr(feedback_msg.feedback, 'state', '<unknown>')
         self.get_logger().info(f'[Feedback] {state}')
 
-    def _result_cb(self, future):
+    def _result_cb(self, future, task=None):
         result = future.result().result
         code = getattr(result.error_code, 'val', 'unknown')
-        self.get_logger().info(f'[Result] error_code {code}')
+        self.get_logger().info(f'[{task} - Result] error_code {code}')
+
+    def move(self,start, target):
+        self.send_ee_pose(*self.safe_pose)  # move to a safe place first
+        self.send_ee_pose(*start)  # move to start pose
+        self.send_gr_pose(open=True)  # open gripper
+        self.send_gr_pose(open=False)  # close gripper
+        self.send_ee_pose(*self.safe_pose)  # move to a safe place
+        self.send_ee_pose(*target)  # move to target pose
+        self.send_gr_pose(open=True)  # open gripper
+        self.send_ee_pose(*self.safe_pose)  # move to a safe place
+    
 
 
 
@@ -121,9 +133,10 @@ class MoveItEEClient(Node):
 def main():
     rclpy.init()
     node = MoveItEEClient()
-    node.send_ee_pose(0.15, 0.0, 0.25)  # single EE pose
-    node.send_ee_pose(3.0, 1.0, 5.0)  # single EE pose
-    node.send_gr_pose(open=True)  # open gripper
+    node.move(
+        start=(0.5, 0.0, 0.25),
+        target=(0.3, 0.0, 0.0)
+    )
     rclpy.spin(node)
     rclpy.shutdown()
 
