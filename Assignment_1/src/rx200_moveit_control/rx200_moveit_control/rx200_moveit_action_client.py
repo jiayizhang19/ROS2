@@ -21,7 +21,8 @@ class MoveItEEClient(Node):
 
         self.get_logger().info('Node initialized successfully!')
     
-    def send_pose(self, x, y, z, w=1.0):
+    def send_pose(self, x, y, z, w=1.0): 
+        # w is the quaternion scalar default =1.0 reperesenting no rotation
         pose = PoseStamped()
         pose.header.frame_id = self.base_link # refenence to base_link
         pose.pose.position.x = x
