@@ -123,9 +123,6 @@ def main():
     node = MoveItEEClient()
     node.send_ee_pose(0.15, 0.0, 0.25)  # single EE pose
     node.send_ee_pose(3.0, 1.0, 5.0)  # single EE pose
-    # node.send_ee_pose(3.0, 1.0, 1.0)  # single EE pose
-    # node.send_ee_pose(2.0, 1.5, 1.0)  # single EE pose
-
     node.send_gr_pose(open=True)  # open gripper
     rclpy.spin(node)
     rclpy.shutdown()
