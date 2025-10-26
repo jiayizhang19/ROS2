@@ -6,6 +6,7 @@ from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import MotionPlanRequest, Constraints, PositionConstraint, OrientationConstraint, JointConstraint
 from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import PoseStamped, Quaternion
+from tf_transformations import quaternion_from_euler
 
 class MoveItEEClient(Node):
     def __init__(self):
@@ -27,13 +28,15 @@ class MoveItEEClient(Node):
 
         self.get_logger().info('Node initialized successfully!')
     
-    def send_ee_pose(self, x, y, z, w=1.0, task=None):
+    def send_ee_pose(self, x, y, z, task=None):
         pose = PoseStamped()
         pose.header.frame_id = self.base_link # refenence to base_link
         pose.pose.position.x = x
         pose.pose.position.y = y
         pose.pose.position.z = z
-        pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=w)
+        # pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0) # no orientation
+        qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, 0.78)
+        pose.pose.orientation = Quaternion(x=qx, y=qy, z=qz, w=qw)
 
         req = MotionPlanRequest()
         req.group_name = self.group_name_arm
@@ -43,6 +46,7 @@ class MoveItEEClient(Node):
         pc = PositionConstraint()
         pc.header.frame_id = self.base_link
         pc.link_name = self.ee_link
+
         sp = SolidPrimitive()
         sp.type = SolidPrimitive.SPHERE
         sp.dimensions = [0.01] # if robots behave wild, tune this parameter
@@ -133,9 +137,13 @@ class MoveItEEClient(Node):
 def main():
     rclpy.init()
     node = MoveItEEClient()
+    # node.move(
+    #     start=(0.5, 0.0, 0.25),
+    #     target=(0.3, 0.0, 0.0)
+    # )
     node.move(
-        start=(0.5, 0.0, 0.25),
-        target=(0.3, 0.0, 0.0)
+        start=(0.25, 0.25, 0.25),
+        target=(0.0, 0.3, 0.0)
     )
     rclpy.spin(node)
     rclpy.shutdown()
