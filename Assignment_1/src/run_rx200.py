@@ -7,7 +7,7 @@ workspace_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 commands = """
 colcon build && \
-source install/setup.bash && \
+source install/setup.bash && echo "Environment sourced!" && \
 ros2 run rx200_moveit_control rx200_moveit_client
 """
 

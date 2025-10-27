@@ -7,6 +7,7 @@ from moveit_msgs.msg import MotionPlanRequest, Constraints, PositionConstraint, 
 from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import PoseStamped, Quaternion
 from tf_transformations import quaternion_from_euler
+import math
 
 class MoveItEEClient(Node):
     def __init__(self):
@@ -35,9 +36,11 @@ class MoveItEEClient(Node):
         pose.pose.position.y = y
         pose.pose.position.z = z
         # pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0) # no orientation
-        qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, 0.78)
+        # qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, 1.57) # 90 degrees yaw
+        qx, qy, qz, qw = self.compute_quaternion(target=(x, y, z))
         pose.pose.orientation = Quaternion(x=qx, y=qy, z=qz, w=qw)
 
+        
         req = MotionPlanRequest()
         req.group_name = self.group_name_arm
         req.allowed_planning_time = 5.0
@@ -120,7 +123,7 @@ class MoveItEEClient(Node):
         code = getattr(result.error_code, 'val', 'unknown')
         self.get_logger().info(f'[{task} - Result] error_code {code}')
 
-    def move(self,start, target):
+    def move(self, start, target):
         self.send_ee_pose(*self.safe_pose)  # move to a safe place first
         self.send_ee_pose(*start)  # move to start pose
         self.send_gr_pose(open=True)  # open gripper
@@ -129,9 +132,19 @@ class MoveItEEClient(Node):
         self.send_ee_pose(*target)  # move to target pose
         self.send_gr_pose(open=True)  # open gripper
         self.send_ee_pose(*self.safe_pose)  # move to a safe place
+
+    def compute_quaternion(self, target, start=(0.0, 0.0, 0.0)):
+        '''
+        Compute quaternion from start and target positions in the X-Y plane
+        > Outputs: Quaternion (x, y, z, w) in radians
+        '''
+        x = target[0] - start[0]
+        y = target[1] - start[1]
+        # compute the angle between two points in the X-Y plane, which is the yaw angle
+        yaw = math.atan2(y, x) 
+        # convert euler angles to quaternion
+        return quaternion_from_euler(0.0, 0.0, yaw)
     
-
-
 
 
 def main():
@@ -142,9 +155,10 @@ def main():
     #     target=(0.3, 0.0, 0.0)
     # )
     node.move(
-        start=(0.25, 0.25, 0.25),
-        target=(0.0, 0.3, 0.0)
+        start=(0.25, 0.25, 0.0),
+        target=(-0.3, -0.3, 0.0)
     )
+    # node.send_ee_pose(-0.3, 0.3, 0.15)
     rclpy.spin(node)
     rclpy.shutdown()
 
