@@ -4,6 +4,9 @@ from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
+# Commands to run this launch file:
+# build and source your workspace first then run:
+# ros2 launch robot_bringup control_only.launch.py
 
 def generate_launch_description():
     '''Ensure you have the '''
@@ -27,7 +30,8 @@ def generate_launch_description():
     # Create you node actions using the Node object
     # Add nodes using ld.add_action
 
-    ld.add_action(moveit_control)
     ld.add_action(dc)
+    ld.add_action(moveit_control)
+    
 
     return ld
