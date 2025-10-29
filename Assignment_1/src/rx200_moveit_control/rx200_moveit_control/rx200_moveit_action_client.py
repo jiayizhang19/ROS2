@@ -150,10 +150,6 @@ class MoveItEEClient(Node):
 def main():
     rclpy.init()
     node = MoveItEEClient()
-    # node.move(
-    #     start=(0.5, 0.0, 0.25),
-    #     target=(0.3, 0.0, 0.0)
-    # )
     node.move(
         start=(0.25, 0.25, 0.0),
         target=(-0.3, -0.3, 0.0)
