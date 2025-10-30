@@ -23,12 +23,44 @@ class MoveItEEClient(Node):
         self.base_link = 'rx200/base_link'
         self.gripper_joint = 'left_finger'
         self.safe_pose = (0.15, 0.0, 0.25) # define a safe pose
+
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('start_gripper_state', rclpy.Parameter.Type.BOOL),
+                ('x_start', rclpy.Parameter.Type.DOUBLE),
+                ('y_start', rclpy.Parameter.Type.DOUBLE),
+                ('z_start', rclpy.Parameter.Type.DOUBLE),
+                ('x_target', rclpy.Parameter.Type.DOUBLE),
+                ('y_target', rclpy.Parameter.Type.DOUBLE),
+                ('z_target', rclpy.Parameter.Type.DOUBLE)
+            ]
+        )   
         
-        self.declare_parameter('start_state_gripper_open', value=True)
-        self.send_gr_pose(self.get_parameter('start_state_gripper_open').value)
+        # self.declare_parameter('start_state_gripper_open', value=True)
+        # self.send_gr_pose(self.get_parameter('start_state_gripper_open').value)
+
+        start_pose, target_pose = self.get_start_target_poses()[0], self.get_start_target_poses()[1]
 
         self.get_logger().info('Node initialized successfully!')
+        self.get_logger().info(f'start_pose: {start_pose}, target_pose: {target_pose}')
+        self.move(start_pose, target_pose)
     
+
+    def get_start_target_poses(self):
+        x_start = self.get_parameter('x_start').value
+        y_start = self.get_parameter('y_start').value
+        z_start = self.get_parameter('z_start').value
+        x_target = self.get_parameter('x_target').value
+        y_target = self.get_parameter('y_target').value
+        z_target = self.get_parameter('z_target').value
+
+        start = (x_start, y_start, z_start)
+        target = (x_target, y_target, z_target)
+
+        return start, target
+    
+
     def send_ee_pose(self, x, y, z, task=None):
         pose = PoseStamped()
         pose.header.frame_id = self.base_link # refenence to base_link
@@ -150,10 +182,10 @@ class MoveItEEClient(Node):
 def main():
     rclpy.init()
     node = MoveItEEClient()
-    node.move(
-        start=(0.25, 0.25, 0.0),
-        target=(-0.3, -0.3, 0.0)
-    )
+    # node.move(
+    #     start=(0.25, 0.25, 0.0),
+    #     target=(-0.3, -0.3, 0.0)
+    # )
     # node.send_ee_pose(-0.3, 0.3, 0.15)
     rclpy.spin(node)
     rclpy.shutdown()
