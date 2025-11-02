@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import os
+import yaml
+import math
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
@@ -7,7 +10,7 @@ from moveit_msgs.msg import MotionPlanRequest, Constraints, PositionConstraint, 
 from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import PoseStamped, Quaternion
 from tf_transformations import quaternion_from_euler
-import math
+from ament_index_python.packages import get_package_share_directory
 
 class MoveItEEClient(Node):
     def __init__(self):
@@ -24,18 +27,26 @@ class MoveItEEClient(Node):
         self.gripper_joint = 'left_finger'
         self.safe_pose = (0.15, 0.0, 0.25) # define a safe pose
 
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-                ('start_gripper_state', rclpy.Parameter.Type.BOOL),
-                ('x_start', rclpy.Parameter.Type.DOUBLE),
-                ('y_start', rclpy.Parameter.Type.DOUBLE),
-                ('z_start', rclpy.Parameter.Type.DOUBLE),
-                ('x_target', rclpy.Parameter.Type.DOUBLE),
-                ('y_target', rclpy.Parameter.Type.DOUBLE),
-                ('z_target', rclpy.Parameter.Type.DOUBLE)
-            ]
-        )   
+        self.yaml_dir = os.path.join(
+            get_package_share_directory('rx200_moveit_control'),
+            'config',
+        )
+
+        self.poses = self.load_from_yaml(self.yaml_dir, 'poses.yaml')
+
+        # Another way to read parameters from config file
+        # self.declare_parameters(
+        #     namespace='',
+        #     parameters=[
+        #         ('start_gripper_state', rclpy.Parameter.Type.BOOL),
+        #         ('x_start', rclpy.Parameter.Type.DOUBLE),
+        #         ('y_start', rclpy.Parameter.Type.DOUBLE),
+        #         ('z_start', rclpy.Parameter.Type.DOUBLE),
+        #         ('x_target', rclpy.Parameter.Type.DOUBLE),
+        #         ('y_target', rclpy.Parameter.Type.DOUBLE),
+        #         ('z_target', rclpy.Parameter.Type.DOUBLE)
+        #     ]
+        # )   
         
         # self.declare_parameter('start_state_gripper_open', value=True)
         # self.send_gr_pose(self.get_parameter('start_state_gripper_open').value)
@@ -48,18 +59,19 @@ class MoveItEEClient(Node):
     
 
     def get_start_target_poses(self):
-        x_start = self.get_parameter('x_start').value
-        y_start = self.get_parameter('y_start').value
-        z_start = self.get_parameter('z_start').value
-        x_target = self.get_parameter('x_target').value
-        y_target = self.get_parameter('y_target').value
-        z_target = self.get_parameter('z_target').value
-
+        x_start = self.poses['start_point']['x']
+        y_start = self.poses['start_point']['y']
+        z_start = self.poses['start_point']['z']
+        x_target = self.poses['goal_point']['x']
+        y_target = self.poses['goal_point']['y']
+        z_target = self.poses['goal_point']['z']
         start = (x_start, y_start, z_start)
         target = (x_target, y_target, z_target)
-
         return start, target
+
     
+    def get_gripper_state(self):
+        return self.poses['gripper']['start_gripper_state']
 
     def send_ee_pose(self, x, y, z, task=None):
         pose = PoseStamped()
@@ -176,6 +188,13 @@ class MoveItEEClient(Node):
         yaw = math.atan2(y, x) 
         # convert euler angles to quaternion
         return quaternion_from_euler(0.0, 0.0, yaw)
+    
+
+    def load_from_yaml(self, dir, file):
+        path = os.path.join(dir, file)
+        print(f'Loading poses from: {path}')
+        with open(path, 'r') as file:
+            return yaml.safe_load(file)
     
 
 

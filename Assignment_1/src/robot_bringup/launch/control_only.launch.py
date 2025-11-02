@@ -13,12 +13,14 @@ def generate_launch_description():
     '''Ensure you have the '''
     ld = LaunchDescription()
 
-    config = os.path.join(
-        get_package_share_directory('robot_bringup'),
-        'config',
-        'params.yaml'
-    )
+    # another way to get config file, see here https://roboticsbackend.com/ros2-yaml-params/
+    # config = os.path.join(
+    #     get_package_share_directory('robot_bringup'),
+    #     'config',
+    #     'params.yaml'
+    # )
 
+    # Way to enable parameters from command line
     # dc = DeclareLaunchArgument(
     #     'default_gr_state',
     #     default_value='True',
@@ -28,7 +30,7 @@ def generate_launch_description():
     moveit_control = Node(
         package='rx200_moveit_control',
         executable='rx200_moveit_client',
-        parameters=[config],
+        # parameters=[config],
         # parameters=[{
         #     'start_state_gripper': LaunchConfiguration('default_gr_state'),
         # }]

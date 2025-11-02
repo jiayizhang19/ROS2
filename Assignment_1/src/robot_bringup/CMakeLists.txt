@@ -17,9 +17,10 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
-install(DIRECTORY
-  config
-  DESTINATION share/${PROJECT_NAME}
-)
+# Another way to enable pass parameters using config file 
+#install(DIRECTORY
+#  config
+#  DESTINATION share/${PROJECT_NAME}
+#)
 
 ament_package()

@@ -1,0 +1,10 @@
+gripper:
+  start_gripper_state: true
+start_point:
+  x: -0.3
+  y: -0.3
+  z: 0.0
+goal_point:
+  x: 0.25
+  y: 0.25
+  z: 0.0
