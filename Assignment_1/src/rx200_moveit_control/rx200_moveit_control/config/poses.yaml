@@ -1,10 +1,17 @@
+safe_pose:
+  x: 0.15
+  y: 0.0
+  z: 0.25
+linear_move:
+  enabled: true
+  steps: 10
 gripper:
   start_gripper_state: true
 start_point:
-  x: -0.3
-  y: -0.3
-  z: 0.0
+  x: 0.30
+  y: 0.30
+  z: 0.15
 goal_point:
-  x: 0.25
-  y: 0.25
-  z: 0.0
+  x: -0.30
+  y: -0.30
+  z: 0.15
