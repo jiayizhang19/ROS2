@@ -1,5 +1,12 @@
 I will add some useful terminal commands you should know about when working with ROS2. The best way to view this file is in VSCode (or other markdown editors/viewers)
 
+### Useful Commands to use when debugging the node
+```bash
+ros2 node list # to see if your nodes are up and running
+ros2 topic info /topic_name # to see how many subscribers and publishes are connected
+ros2 topic echo /topic_name # to see the value of subscriber captured
+```
+
 ### Check ROS_DOMAIN_ID on each computer
 ```bash
 export ROS_DOMAIN_ID
