@@ -1,3 +1,4 @@
+
 from glob import glob
 from setuptools import find_packages, setup
 
@@ -5,7 +6,7 @@ package_name = 'rx200_moveit_control'
 
 setup(
     name=package_name,
-    version='0.0.1',
+    version='0.0.0',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -15,9 +16,9 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='James Florin Petri',
-    maintainer_email='james.petri@mu.ie',
-    description='Package used for RX200 arm control via the moveit interface',
+    maintainer='master26',
+    maintainer_email='ozcascante@gmail.com',
+    description='TODO: Package description',
     license='TODO: License declaration',
     extras_require={
         'test': [
@@ -26,7 +27,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'rx200_moveit_client=rx200_moveit_control.rx200_moveit_action_client:main'
+        'rx200_moveit_client=rx200_moveit_control.rx200_moveit_action_client:main',
+        'point_safety_checker=rx200_moveit_control.point_safety_checker:main',
         ],
     },
 )

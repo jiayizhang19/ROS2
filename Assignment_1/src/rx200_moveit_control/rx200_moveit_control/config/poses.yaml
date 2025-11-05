@@ -1,17 +1,56 @@
+#Enable disable debug messages
+debug:
+  verbose: true
+
+start_point:
+  x: 0.2
+  y: 0.5
+  z: 0.15
+
+goal_point:
+  x: -0.2
+  y: -0.15
+  z: 0.15
+#Movement up/down on Z axis after picking/dropping object
+z_axis_up: 0.23
+
+#Return to Sleep in two steps - avoid hitting the resting fork
 safe_pose:
-  x: 0.15
+  x: 0.12
   y: 0.0
-  z: 0.25
+  z: 0.21
+  z_lower: 0.084
+
+#Chose between Moveit free move and short linear steps
 linear_move:
-  enabled: true
-  steps: 10
+  enabled: false
+  steps: 4
+
 gripper:
   start_gripper_state: true
-start_point:
-  x: 0.30
-  y: 0.30
-  z: 0.15
-goal_point:
-  x: -0.30
-  y: -0.30
-  z: 0.15
+  
+#Prevent user from collection/droppint items on base robot or beyond reach
+no_go_zone:
+  base_radius: 0.09
+  out_radius: 0.5
+  x1: -0.1
+  x2: -0.22
+  y1: -0.1
+  y2: 0.1
+
+#Defines closer area to base where to use EE pitch at 90 degrees
+pitch_area:
+  radius_pitch: 0.26
+  x1_pitch: -0.19
+  x2_pitch: -0.34
+  y1_pitch: -0.27
+  y2_pitch: 0.27
+
+#Define EE pitch angles
+pitch_angles:
+  horizontal_pitch: 0.0
+  vertical_pitch: 1.57
+  home_pitch: 0.45
+  
+ 
+

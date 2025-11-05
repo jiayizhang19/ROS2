@@ -1,90 +1,162 @@
 #!/usr/bin/env python3
 import os
 import yaml
-import math
 import rclpy
+import time
+import math
+import sys
+import subprocess
+import numpy as np
+import tf_transformations
+from scipy.spatial.transform import Rotation as Rota
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import MotionPlanRequest, Constraints, PositionConstraint, OrientationConstraint, JointConstraint
 from shape_msgs.msg import SolidPrimitive
-from geometry_msgs.msg import PoseStamped, Quaternion
-from tf_transformations import quaternion_from_euler
+from geometry_msgs.msg import PoseStamped, Quaternion, Point
+from std_msgs.msg import Bool, String
 from ament_index_python.packages import get_package_share_directory
+
+##############################################################
+#How to run me from command prompt
+#>ros2 launch robot_bringup control_only.launch.py
+##############################################################
 
 class MoveItEEClient(Node):
     def __init__(self):
         super().__init__('rx200_moveit_control')
 
+        self.is_safety_check_passed = False
+        self.point_input_pub = self.create_publisher(
+            Point, 
+            '/point_input', 
+            10
+        )
+        self.safety_check_sub = self.create_subscription(
+            Bool,
+            '/point_safety_check',
+            self.point_safety_check_callback,
+            10
+        )
+        
         self._client = ActionClient(self, MoveGroup, '/move_action')
         while not self._client.wait_for_server(1.0):
-            self.get_logger().warning('Waiting for Action Server ...')
+            self.get_logger().warning('Waiting for Action Server')
+        self.get_logger().info('Node initialized successfully!')
 
-        self.group_name_arm= 'interbotix_arm'
-        self.group_name_gripper= 'interbotix_gripper'
+        self.group_name_arm = 'interbotix_arm'
+        self.group_name_gripper = 'interbotix_gripper'
         self.ee_link = 'rx200/ee_gripper_link'
         self.base_link = 'rx200/base_link'
         self.gripper_joint = 'left_finger'
-
-        self.yaml_dir = os.path.join(
-            get_package_share_directory('rx200_moveit_control'),
-            'config',
+      
+        #Get Yaml file path to src
+        self.config_file = os.path.join(
+        os.path.dirname(__file__),
+        '../../../../../../rx200_moveit_control/rx200_moveit_control/config/'
         )
-
+        #if self.verbose: self.get_logger().info(f'Yaml Path1: {self.config_file}')
+        self.yaml_dir = os.path.abspath(self.config_file)
+        #if self.verbose: self.get_logger().info(f'Yaml Abs Path: {self.yaml_dir}')
         self.poses = self.load_from_yaml(self.yaml_dir, 'poses.yaml')
-        self.linear_move_enabled = self.poses['linear_move']['enabled']
-        self.linear_move_steps = self.poses['linear_move']['steps']
+
+        self.verbose = (self.poses['debug']['verbose'])
+        
+        x_start, y_start, z_start, x_goal, y_goal, z_goal = self.get_start_goal_poses()
+        start_point = (x_start, y_start, z_start)
+        goal_point = (x_goal, y_goal, z_goal)
+        self.get_logger().info(f'start point: {start_point}, goal point: {goal_point}') 
+        
+        self.z_up = self.poses['z_axis_up']
         self.safe_pose = (
             self.poses['safe_pose']['x'],
             self.poses['safe_pose']['y'],
-            self.poses['safe_pose']['z']
+            self.poses['safe_pose']['z'],
         )
-        # Another way to read parameters from config file
-        # self.declare_parameters(
-        #     namespace='',
-        #     parameters=[
-        #         ('start_gripper_state', rclpy.Parameter.Type.BOOL),
-        #         ('x_start', rclpy.Parameter.Type.DOUBLE),
-        #         ('y_start', rclpy.Parameter.Type.DOUBLE),
-        #         ('z_start', rclpy.Parameter.Type.DOUBLE),
-        #         ('x_target', rclpy.Parameter.Type.DOUBLE),
-        #         ('y_target', rclpy.Parameter.Type.DOUBLE),
-        #         ('z_target', rclpy.Parameter.Type.DOUBLE)
-        #     ]
-        # )   
+        self.safe_pose_lower = (
+            self.poses['safe_pose']['x'],
+            self.poses['safe_pose']['y'],
+            self.poses['safe_pose']['z_lower'],
+        )    
+        self.linear_move_enabled = self.poses['linear_move']['enabled']
+        self.linear_move_steps = self.poses['linear_move']['steps']
+        self.start_gripper_state = self.poses['gripper']['start_gripper_state']
         
-        # self.declare_parameter('start_state_gripper_open', value=True)
-        # self.send_gr_pose(self.get_parameter('start_state_gripper_open').value)
+        if self.verbose: self.get_logger().info(f'x_start: {x_start}') 
+        if self.verbose: self.get_logger().info(f'y_start: {y_start}') 
+        if self.verbose: self.get_logger().info(f'z_start: {z_start}') 
+        if self.verbose: self.get_logger().info(f'x_goal: {x_goal}') 
+        if self.verbose: self.get_logger().info(f'y_goal: {y_goal}') 
+        if self.verbose: self.get_logger().info(f'z_goal: {z_goal}')                        
 
-        start_pose, target_pose = self.get_start_target_poses()[0], self.get_start_target_poses()[1]
+        #Safe Z hight to move on top of base circle or base
+        self.z_hieght_safe = 0.15
+        
+        #Default radius to decide on pitch = 0.0 or pitch = 1.57
+        self.radius_pitch = self.poses['pitch_area']['radius_pitch']
+        
+        #Default Base Box area to define pitch = 0.0 or pitch 1.57
+        self.x1_pitch = self.poses['pitch_area']['x1_pitch']
+        self.x2_pitch = self.poses['pitch_area']['x2_pitch']
+        self.y1_pitch = self.poses['pitch_area']['y1_pitch']
+        self.y2_pitch = self.poses['pitch_area']['y2_pitch']
+                
+        #pitch angles
+        self.horizontal_pitch = self.poses['pitch_angles']['horizontal_pitch']
+        self.vertical_pitch = self.poses['pitch_angles']['vertical_pitch']
+        self.home_pitch = self.poses['pitch_angles']['home_pitch']
 
-        self.get_logger().info('Node initialized successfully!')
-        self.get_logger().info(f'start_pose: {start_pose}, target_pose: {target_pose}')
-        self.movement_strategy()
-    
+
+        if not self.call_safety_checks_for_points(x_start, y_start, z_start, label='start'):
+            rclpy.shutdown()
+            sys.exit(0)
+        if not self.call_safety_checks_for_points(x_goal, y_goal, z_goal, label='goal'):
+            rclpy.shutdown()
+            sys.exit(0)
+
+
+    def call_safety_checks_for_points(self, x, y, z, label=''):
+            # Check safety of the start point
+        self.send_point_for_safety_check(x, y, z, label)
+        # Important!!! Without rclpy.spin_once, the valule of is_safety_check_passed will not be updated, 
+        # as the callback is not called yet when the node is initialized so the value remains initialized value definned above
+        timeout = time.time() + 3.0  # 3 seconds from now
+        while time.time() < timeout and rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.1)
+        if self.is_safety_check_passed:
+            self.get_logger().info(f'Safe {label} point ({x}, {y}, {z}). > Proceeding the node...')
+            return True
+        else:
+            self.get_logger().error(f'Unsafe {label} point ({x}, {y}, {z}). > Exiting the node...')
+            return False
+       
+    def get_start_goal_poses(self):
+        x_start = self.poses['start_point']['x']
+        y_start = self.poses['start_point']['y']
+        z_start = self.poses['start_point']['z']
+        x_goal = self.poses['goal_point']['x']
+        y_goal = self.poses['goal_point']['y']
+        z_goal = self.poses['goal_point']['z']
+        return x_start, y_start, z_start, x_goal, y_goal, z_goal
 
     def load_from_yaml(self, dir, file):
         path = os.path.join(dir, file)
         print(f'Loading poses from: {path}')
         with open(path, 'r') as file:
             return yaml.safe_load(file)
-
-
-    def get_start_target_poses(self):
-        x_start = self.poses['start_point']['x']
-        y_start = self.poses['start_point']['y']
-        z_start = self.poses['start_point']['z']
-        x_target = self.poses['goal_point']['x']
-        y_target = self.poses['goal_point']['y']
-        z_target = self.poses['goal_point']['z']
-        start = (x_start, y_start, z_start)
-        target = (x_target, y_target, z_target)
-        return start, target
-
-    
-    def get_gripper_state(self):
-        return self.poses['gripper']['start_gripper_state']
-
+        
+    def send_point_for_safety_check(self, x, y, z, label=''):
+        point_msg = Point()
+        point_msg.x = x 
+        point_msg.y = y
+        point_msg.z = z
+        self.point_input_pub.publish(point_msg)
+        if self.verbose: self.get_logger().info(f'Sent {label} point for safety check: ({x}, {y}, {z})')
+        
+    def point_safety_check_callback(self, msg: Bool):
+        # self.get_logger().info(f'Received safety check result: {msg.data}')
+        self.is_safety_check_passed = msg.data
 
     def movement_strategy(self):
         if self.linear_move_enabled:
@@ -92,43 +164,51 @@ class MoveItEEClient(Node):
         else:
             self.free_move()
 
-
     def free_move(self):
-        start, target = self.get_start_target_poses()
-        self.send_ee_pose(*self.safe_pose)  # move to a safe place first
-        self.send_ee_pose(*start)  # move to start pose
-        self.send_gr_pose(open=True)  # open gripper
+        x_start, y_start, z_start, x_goal, y_goal, z_goal = self.get_start_goal_poses()
+        start_gripper_state = self.start_gripper_state        
+        self.send_ee_pose(*self.safe_pose_lower, True)  # move to the safe place first
+        self.send_gr_pose(start_gripper_state)
+        self.send_ee_pose(x_start, y_start, z_start, False)  # lower to start pose
         self.send_gr_pose(open=False)  # close gripper
-        self.send_ee_pose(*self.safe_pose)  # move to a safe place
-        self.send_ee_pose(*target)  # move to target pose
-        self.send_gr_pose(open=True)  # open gripper
-        self.send_ee_pose(*self.safe_pose)  # move to a safe place
-
-
+        self.send_ee_pose(x_start, y_start, z_start + self.z_up, False)  # move above start pose        
+        self.send_ee_pose(x_goal, y_goal, z_goal + self.z_up, False)  # move above target pose  
+        time.sleep(3.0) # This move wehn in quadrant (-x, -y) needs more time for some reason!!
+        self.send_ee_pose(x_goal, y_goal, z_goal, False)  # move to target pose
+        self.send_gr_pose(start_gripper_state)  # open gripper      
+        time.sleep(2.0) 
+        self.send_ee_pose(*self.safe_pose, True)  # move to the safe place
+        time.sleep(3.0)
+        self.send_ee_pose(*self.safe_pose_lower, True)  # move to the safe place
+    
     def linear_move(self, steps):
-        (x_start, y_start, z_start), (x_target, y_target, z_target) = self.get_start_target_poses()
-        start_gripper_state = self.get_gripper_state()
-        z_inc = 0.05
-        z_start_up = z_start + z_inc
-        z_target_up = z_target + z_inc
+        x_start, y_start, z_start, x_goal, y_goal, z_goal = self.get_start_goal_poses()
+        #start_gripper_state = self.start_gripper_state
+        z_start_up = z_start + self.z_up
+        z_goal_up = z_goal + self.z_up
         waypoints = self.linear_waypoints(
             (x_start, y_start, z_start_up),
-            (x_target, y_target, z_target_up),
+            (x_goal, y_goal, z_goal_up),
             steps
-        )
-        self.send_gr_pose(start_gripper_state)
-        self.send_ee_pose(*self.safe_pose)  # Start from a safe pose
-        self.send_ee_pose(x_start, y_start, z_start_up) # Move above the start pose
-        self.send_ee_pose(x_start, y_start, z_start)  # Move to the start pose
+        )        
+        self.send_ee_pose(*self.safe_pose_lower, True)  # Start from a safe pose
+        self.send_gr_pose(self.start_gripper_state)
+        self.send_ee_pose(x_start, y_start, z_start,False)  # Move to the start pose
         self.send_gr_pose(False)  # Close gripper
-        self.send_ee_pose(x_start, y_start, z_start_up) # Move back up
+        self.send_ee_pose(x_start, y_start, z_start_up, False) # Move above the start pose
+        #self.send_ee_pose(x_start, y_start, z_start_up, False) # Move above the start pose
         for waypoint in waypoints:
             x, y, z = waypoint
-            self.get_logger().info(f'Moving to: ({x:.3f} {y:.3f} {z_start_up:.3f})') 
-            self.send_ee_pose(x, y, z)
-        self.send_ee_pose(x_target, y_target, z_target)  # Lower to the goal pose
-        self.send_gr_pose(True)  # Open gripper
-
+            if self.verbose: self.get_logger().info(f'Moving to: ({x:.3f} {y:.3f} {z_start_up:.3f})')         
+            self.send_ee_pose(x, y, z, False) 
+        self.send_ee_pose(x_goal, y_goal, z_goal, False)  # Lower to the goal pose
+        self.send_gr_pose(self.start_gripper_state)  # Open gripper
+        #self.send_ee_pose(x_goal, y_goal, z_goal_up, False)  # Move above the goal pose
+        #Go Home
+        time.sleep(4.0)
+        self.send_ee_pose(*self.safe_pose, True)  # move to the safe place
+        time.sleep(4.0)
+        self.send_ee_pose(*self.safe_pose_lower, True)  # move to the safe place
 
     def linear_waypoints(self, start, goal, steps):
         waypoints = []
@@ -139,87 +219,62 @@ class MoveItEEClient(Node):
             z = start[2] + increment * (goal[2] - start[2])
             waypoints.append((x, y, z))
         return waypoints 
-
-
-    def compute_quaternion(self, target, start=(0.0, 0.0, 0.0)):
-        '''
-        Compute quaternion from start and target positions in the X-Y plane
-        > Outputs: Quaternion (x, y, z, w) in radians
-        '''
-        x = target[0] - start[0]
-        y = target[1] - start[1]
-        # compute the angle between two points in the X-Y plane, which is the yaw angle
-        yaw = math.atan2(y, x) 
-        # convert euler angles to quaternion
-        return quaternion_from_euler(0.0, 0.0, yaw)
-    
-
-    def send_ee_pose(self, x, y, z, task=None):
-        pose = PoseStamped()
-        pose.header.frame_id = self.base_link # refenence to base_link
-        pose.pose.position.x = x
-        pose.pose.position.y = y
-        pose.pose.position.z = z
-        # pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0) # no orientation
-        # qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, 1.57) # 90 degrees yaw
-        qx, qy, qz, qw = self.compute_quaternion(target=(x, y, z))
-        pose.pose.orientation = Quaternion(x=qx, y=qy, z=qz, w=qw)
-
         
-        req = MotionPlanRequest()
-        req.group_name = self.group_name_arm
-        req.allowed_planning_time = 5.0
-        req.num_planning_attempts = 3
-
-        pc = PositionConstraint()
-        pc.header.frame_id = self.base_link
-        pc.link_name = self.ee_link
-
-        sp = SolidPrimitive()
-        sp.type = SolidPrimitive.SPHERE
-        sp.dimensions = [0.01] # if robots behave wild, tune this parameter
-        pc.constraint_region.primitives = [sp]
-        pc.constraint_region.primitive_poses = [pose.pose]
-
-        oc = OrientationConstraint()
-        oc.header.frame_id = self.base_link
-        oc.link_name = self.ee_link
-        oc.orientation = pose.pose.orientation
-        oc.absolute_x_axis_tolerance = 0.05 # tune it in the second assignment
-        oc.absolute_y_axis_tolerance = 0.05
-        oc.absolute_z_axis_tolerance = 0.05
-        oc.weight = 1.0 # range [0,1], like weight in machine learning 
-
-        goal_constraints = Constraints()
-        goal_constraints.position_constraints = [pc]
-        goal_constraints.orientation_constraints = [oc]
-        req.goal_constraints = [goal_constraints]
-
-        goal = MoveGroup.Goal()
-        goal.request = req
-        goal.planning_options.plan_only = False
-        goal.planning_options.replan = True
-        goal.planning_options.look_around = False
-
-        send_future = self._client.send_goal_async(
-            goal, 
-            feedback_callback=self._feedback_cb
-            )
-        send_future.add_done_callback(self._target_response_cb)
-
-
-    def send_gr_pose(self, open=True):
+    #This check is use to decide EE pitch if x, y are inside box exclusion area where 0.0 pitch will hit the base
+    def base_box_exclusion(self, x, y, z):
+        if (x <= self.x1_pitch) and (x >=self.x2_pitch) and (y >= self.y1_pitch) and (y <= self.y2_pitch) and (z < self.z_hieght_safe):
+            return True
+        else:
+            return False 
+    
+    #This check is use to decide EE pitch if x, y are inside circle exclusion area where 0.0 pitch will hit the base
+    def base_circle_exclusion(self, x, y, z):
+        pos_radius = math.sqrt(x**2 + y**2)        
+        if (pos_radius <= self.radius_pitch) and (z < self.z_hieght_safe):
+            return True
+        else:
+            return False  
+            
+    def make_pose_toward_point(self, x, y, z, home):
+        # Compute yaw so EE points to target in XY
+        yaw = np.arctan2(y, x)
+        roll = 0.0
+        # 90 degree if close to the arms base.
+        pitch = self.pitch_rotation(x, y, z, home)
+        if self.verbose: self.get_logger().info(f'start pitch: {pitch}')     
+        # Convert to quaternion
+        q = tf_transformations.quaternion_from_euler(roll, pitch, yaw)
+        q = q / np.linalg.norm(q)  # normalize to avoid Inverse Kinematics issues 
+        return q
+    
+    # Calculate a circular area from (0,0). If inside use EE in vertical position but if outside use horizontal position
+    def pitch_rotation(self, x, y, z, home):
+        #pos_radius = math.sqrt(x**2 + y**2)
+        insde_circle_exclusion = self.base_circle_exclusion(x,y,z)
+        if self.verbose: self.get_logger().info(f'base circle exclusion: {insde_circle_exclusion}')
+        inside_box_exclusion = self.base_box_exclusion(x,y,z)
+        if self.verbose: self.get_logger().info(f'base box exclusion: {inside_box_exclusion}')
+        
+        if not insde_circle_exclusion and not inside_box_exclusion and not home:
+            return self.horizontal_pitch
+        if home:
+            return self.home_pitch
+        else:
+            return self.vertical_pitch
+        
+    def send_gr_pose(self, open):
+        time.sleep(4.0)
+        if self.verbose: self.get_logger().info(f'start_gripper_state: {open}') 
         req = MotionPlanRequest()
         req.group_name = self.group_name_gripper
-        req.allowed_planning_time = 2.0
-        req.num_planning_attempts = 1
+        req.allowed_planning_time = 3.0
+        req.num_planning_attempts = 2
 
-        jc = JointConstraint()
+        jc =JointConstraint()
         jc.joint_name = self.gripper_joint
-        jc.position = 0.035 if open else 0.0
+        jc.position = 0.039 if open else 0.01
         jc.tolerance_above = 0.01
         jc.tolerance_below = 0.01
-        jc.weight = 1.0
 
         goal_constraints = Constraints()
         goal_constraints.joint_constraints = [jc]
@@ -227,46 +282,96 @@ class MoveItEEClient(Node):
 
         goal = MoveGroup.Goal()
         goal.request = req
-        goal.planning_options.plan_only = False 
+        goal.planning_options.plan_only = False
 
         send_future = self._client.send_goal_async(goal)
-        send_future.add_done_callback(self._target_response_cb)
+        send_future.add_done_callback(self._goal_response_cb)
+
+    def send_ee_pose(self, x, y, z, home):
+        time.sleep(3.5)
+        pose = PoseStamped()
+        pose.header.frame_id = self.base_link
+        pose.pose.position.x = x
+        pose.pose.position.y = y
+        pose.pose.position.z = z         
+        q = self.make_pose_toward_point(x, y, z, home)
+        if self.verbose: self.get_logger().info(f'Quaternian Values: x:{q[0]:.3f} y:{q[1]:.3f} z:{q[2]:.3f} w:{q[3]:.3f}')
+        pose.pose.orientation = Quaternion(
+            x=float(q[0]),
+            y=float(q[1]), 
+            z=float(q[2]), 
+            w=float(q[3])
+        )        
+        req = MotionPlanRequest()
+        req.group_name = self.group_name_arm
+        req.allowed_planning_time = 5.0
+        req.num_planning_attempts = 10
+
+        pc = PositionConstraint()
+        pc.header.frame_id = self.base_link
+        pc.link_name = self.ee_link
+        sp = SolidPrimitive()
+        sp.type = SolidPrimitive.SPHERE
+        #change this value from rx200_moveit_control 0.01 to prevent weird moves
+        sp.dimensions = [0.02] # if robot doing weird moves you need to change this value
+        pc.constraint_region.primitives = [sp]
+        pc.constraint_region.primitive_poses = [pose.pose]
+
+        oc = OrientationConstraint()
+        oc.header.frame_id = self.base_link 
+        oc.link_name = self.ee_link
+        oc.orientation = pose.pose.orientation
+        oc.absolute_x_axis_tolerance = 0.05
+        oc.absolute_y_axis_tolerance = 0.05
+        oc.absolute_z_axis_tolerance = 0.05 
+        oc.weight = 1.0  #surpriced if we need to change
+
+        goal_constraint = Constraints()
+        goal_constraint.position_constraints = [pc]
+        goal_constraint.orientation_constraints = [oc]
+        req.goal_constraints = [goal_constraint]
+
+        goal = MoveGroup.Goal()
+        goal.request = req
+        goal.planning_options.plan_only = False # Add innovations in here
+        goal.planning_options.replan = True
+        goal.planning_options.look_around = False
+        
+        send_future = self._client.send_goal_async(
+            goal,
+            feedback_callback=self._feedback_cb
+        )
+        
+        send_future.add_done_callback(self._goal_response_cb)
 
 
-    def _target_response_cb(self, future):
+    def _goal_response_cb(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
-            self.get_logger().error('MoveIt goal rejected')
+            if self.verbose: self.get_logger().error(f'MoveIt goal rejected')
             return
-        self.get_logger().info('MoveIt goal accepted')
+        if self.verbose: self.get_logger().info('MoveIt goal accepted')
         goal_handle.get_result_async().add_done_callback(self._result_cb)
 
 
-    def _feedback_cb(self,feedback_msg):
-        state = getattr(feedback_msg.feedback, 'state', '<unknown>')
-        self.get_logger().info(f'[Feedback] {state}')
+    def _feedback_cb(self, feedback_msg):
+        state = getattr(feedback_msg.feedback, "state", "<unknown>")
+        if self.verbose: self.get_logger().info(f'[Feedback] {state}')
 
 
-    def _result_cb(self, future, task=None):
+    def _result_cb(self, future):
         result = future.result().result
         code = getattr(result.error_code, 'val', 'unknown')
-        self.get_logger().info(f'[{task} - Result] error_code {code}')
+        if self.verbose: self.get_logger().info(f'[Result] error_code {code}')
 
-
-    
 
 
 def main():
     rclpy.init()
     node = MoveItEEClient()
-    # node.move(
-    #     start=(0.25, 0.25, 0.0),
-    #     target=(-0.3, -0.3, 0.0)
-    # )
-    # node.send_ee_pose(-0.3, 0.3, 0.15)
+    node.movement_strategy()
     rclpy.spin(node)
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
