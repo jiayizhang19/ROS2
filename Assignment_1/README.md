@@ -1,52 +1,70 @@
-### Commands to bringup RViz with a "fake" robot arm, update with "actual" for a real arm
-```bash
-ros2 launch interbotix_xsarm_moveit xsarm_moveit.launch.py robot_model:=rx200 hardware_type:=fake
-```
+### High Level Architecture
+- Project has 2 nodes. 
+    1.  The main Node (MoveItEEClient) does the work. 
+    2.  The second Node (PointSafetyCheck) is a simple publisher and subscriber node to show two way communication with the main node. At a later stage more functions can be offload to it. Like user input validation.
 
-### Parameters in use
-Go to the below path to define all the parameters in one go. Parameters included are:
-- safe pose
-- movement strategy (prefer freestyle movement or staright-line movement)
-- gripper status
-- start point
-- target/goal point
+- Two types of motion: 
+    1. Free Moveit motion 
+    2. Linear motion in small linear increments.
+
+- Four zones are defined: 
+    1. Robot base, where collection/drop of objects is not allowed
+    2. Areas close to robot base in where EE pitch is vertical
+    3. Areas at distance from base that permit EE horizontal pitch
+    4. Areas beyond the robot arm reach in where collection/drop of objects is not allow.
+
+- All areas and parameters are define via .yaml file (poses.yamal) for easy and dynamic modification.
+
+- User input is provided through command prompt for simplification
+
+### Ways to run the Project
+- Using below commands to run the project/nodes (launch file: control_only.launch)
+```
+source install/setup.sh
+ros2 launch robot_bringup control_only.launch.py xs:=0.25 ys:=0.15 xg:=0.2 yg:=-0.3
+```
+Other Examples
+```
+ros2 launch robot_bringup control_only.launch.py xs:=0.25 ys:=0.15 xg:=0.2 yg:=-0.3 linear:=True
+```
+```
+ros2 launch robot_bringup control_only.launch.py xs:=0.25 ys:=0.15 zs:=0.05 xg:=0.2 yg:=-0.3 zg:=0.05 linear:=False
+```
+### Parameters in use through command prompt
+- start point (collection)
+- target point (drop off)
+- linear motion or free MoveIt mode
+- All parameters have default values. Default movement mode is free MoveIt mode (linear:=False), z coordinate can be specified but is defaulted to 5cm(z:=0.05)
+
+### Configuration parameters used are provided through .yaml file
+
+Go to the below path to define all the parameters in one go. But it requires a compile for changes to take effect. Reason why user input was excluded.
+
+Parameters included in .yaml:
+- safe pose, smilar to Rviz sleep possition
+- zones coordinates define as radiuses and xy coordinates (base, circutry box behind base)
+- gripper status: open or close
+- verbose mode for debug
+- EE pitch angles
+
 ```
 /src/rx200_moveit_control/rx200_moveit_control/config/poses.yaml
 ```
 
-
-### Ways to run the node
-- Run the runner file directly in below path
-```
-/src/rx200_moveit_control/run_rx200.py
-```
-- Using the below commands to run the nodes
-```bash
-colcon build
-source install/setup.bash
-ros2 launch robot_bringup control_only.launch.py
-```
-
-### System Design
-#### Node 1: point_safetry_checker
-- Checks start and goal points to see if they are reachable. 
-- Reachable area are defined between the outest area the arm can reach and the least area without hitting the base.
-#### Node 2: rx200_moveit_control 
-- Contains main motion planning code, only if passing the point_safety_check should the path be planned and exectued.
-                  
-
 ### Motion Strategy Explaination
 1. move to the safe pose -->   
-2. move above the start pose --> move down to the start pose --> move above the start pose  
-3. back to the safe pose -->   
-4. move above goal pose --> move to the goal pose --> move up above goal pose -->   
-5. back to the safe pose
-#### The basic and safe free movement
+2. move above the start pose --> move down to the start pose --> move above the start pose    
+3. move above goal pose --> move to the goal pose --> move up above goal pose -->   
+4. back to the safe pose
 
-#### The advanced straight line movement -- need further development
+#### Limitations and challenges
+- Syncronous and Asyncronous nature of Actions and Topics still pose an understanding challenge
+- Singularities of the arm are not well understood/controlled. Mainly driven by distant point or long travel distances.
+- User input validation should be offload to a second node, as well as parameters loaded from .yaml.
+- Location of .yaml file prevented the team from using it for user input. We have not solved the problem of hardcoded paths. We plan to continue this line of inquiry 
+- Obstacle definition to prevent collitions needs to be incorportated to a future project. Some postion/movement cause the arm to hit the resting fork at the back of the base. Specially in linear mode movement.
+- Ongoing goal is allowing user coordinate input through GUI.
 
 
-### Useful Points used in test -- error points
-(0.08,0.5,0.05) 
-(0.51, 0, 0.05)
-(-0.2, 0.09, 0.05)
+
+

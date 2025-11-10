@@ -7,6 +7,24 @@ ros2 topic info /topic_name # to see how many subscribers and publishes are conn
 ros2 topic echo /topic_name # to see the value of subscriber captured
 ```
 
+### Issues to check if found the value does not get updated accordingly
+If this value is initialized in the __init__(), you have to run the spin briefly to get the value updated.
+Example in assignment_1 rx200_moveit_action_clinet.py.
+```python
+class MoveItEEClient(Node):
+    def __init__(self):
+        super().__init__('rx200_moveit_control')
+        self.is_safety_check_passed = False
+    def call_safety_checks_for_points(self, x, y, z, label=''):
+        # Check safety of the start point
+        self.send_point_for_safety_check(x, y, z, label)
+        # Important!!! Without rclpy.spin_once, the valule of is_safety_check_passed will not be updated, 
+        # as the callback is not called while the node is initialized, so the value remains initialized value defined above.
+        timeout = time.time() + 3.0  # 3 seconds from now
+        while time.time() < timeout and rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.1)
+```
+
 ### Check ROS_DOMAIN_ID on each computer
 ```bash
 export ROS_DOMAIN_ID
