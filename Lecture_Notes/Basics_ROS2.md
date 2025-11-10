@@ -1,7 +1,7 @@
 ## Documentation 
 https://docs.ros.org/en/foxy/index.html
 
-### - Create ROS2 Packages
+### Create ROS2 Packages
 ```bash
 mkdir folder_name
 cd folder_name
@@ -12,7 +12,7 @@ ros2 pkg create --build-type ament-python robot_pkg_name
 rm -rf folder_name
 ```
 
-### - Run ROS2 Packages (see more commands in ROS2_Commands.md)
+### Run ROS2 Packages (see more commands in ROS2_Commands.md)
 ``` bash
 colcon build
 source install/setup.bash
@@ -20,7 +20,7 @@ ros2 run pkg_name code_entry # code_entry points to the name in setup.py console
 ros2 launch robot_bringup_folder bringup_name # control robots with one terminal instead of various ones, see examples in lesson_2
 ```
 
-### - Folder Structures (inside src)
+### Folder Structures (inside src)
 - robot_pkg_name
     - resource
     - code_directory 
@@ -35,37 +35,59 @@ ros2 launch robot_bringup_folder bringup_name # control robots with one terminal
     - lanuch 
         - my_robot.launch.py # see examples in lesson_2
 
-### RX-200 Robot Arm
-- Install
-```bash
-sudo apt install curl
-curl 'https://raw.githubusercontent.com/Interbotix/interbotix_ros_manipulators/main/interbotix_ros_xsarms/install/amd64/xsarm_amd64_install.sh' > xsarm_amd64_install.sh
-chmod +x xsarm_amd64_install.sh
-./xsarm_amd64_install.sh -d humble
-```
-- Connect to the real arm
-```bash
-ros2 launch interbotix_xsarm_control xsarm_control.launch.py robot_model:=rx200
-cd interbotix_ws/
-source install/setup.bash
-# Disable the motor so that we can move it with hands
-ros2 service call /rx200/torque_enable interbotix_xs_msgs/srv/TorqueEnable "{cmd_type: 'group', name: 'all', enable: false}"
-```
-- Using MoveIt in RViz
-```bash
-cd interbotix_ws/
-source install/setup.bash
-# For turning on the arm using MoveIt in RViz
-# Note: By replacing 'actual' in the command, you can launch without moving the real arm. For Gazebo simulation replace with 'gz_classic' and for RViz only replace with 'fake'.
-ros2 launch interbotix_xsarm_moveit xsarm_moveit.launch.py robot_model:=rx200 hardware_type:=actual
-```
+
 - Check action list and interface after running the ros2 MoveIt code
 ```bash
 ros2 action list # there should be a /move_action
 ros2 interface 
+```  
+
+### Declare Parameters in the Terminal
+1. **Define** a parameter that can be set from the terminal
+```Python
+# In launch file, declare a launch argument named xs
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+start_x = DeclareLaunchArgument('xs', default='0.25', description='x coordinate of start postion')
+```
+2. **Retrieve** the value of that parameter
+```python
+# In launch file, use the value of the xs launch argument (either the default or the one passed from the terminal)
+'xs': LaunchConfiguration ('xs'),
+```
+3. **Pass** the values to the node
+```python 
+# These parameters are passed to the node rx200_moveit_client, which can then access them using self.get_parameter('xs').value
+moveit_control = Node(
+    package='rx200_moveit_control',
+    executable='rx200_moveit_client',
+    name='rx200_moveit_control',
+    parameters=[{
+        # Pass the value of 'xs' (the second) as a parameter to the node 'xs' (the first)
+        # The first xs must match the name used in self.get_parameter() and self.declare_parameter() -- used inside the node
+        # The second xs must match the name used in DeclareLaunchArgument() -- used in the launch file
+        'linear': LaunchConfiguration('linear'),
+        'xs': LaunchConfiguration ('xs'),
+        'ys': LaunchConfiguration ('ys'),
+        'zs': LaunchConfiguration ('zs'),
+        'xg': LaunchConfiguration ('xg'),
+        'yg': LaunchConfiguration ('yg'),
+        'zg': LaunchConfiguration ('zg')
+    }]
+)
+```
+4. **Read** values inside the node
+```python
+# In ROS2, every parameters MUST be declared before it can be accessed using get_parameter(). If xs was not declared, it will raise an error using get_parameter()
+# The value 0.25 here is the fallback in case it's run standalone without a launch file, or the parameter is missing.
+self.declare_parameter('xs', 0.25)
+# Retrieve and use value passed from the launch file / terminal
+self.x_start = self.get_parameter('xs').value
 ```
 
-### ROS2 Rotation
+
+
+### Rotation
 Quaternion is a mathematical way to represent rotations in 3D place. It's an alternative to Euler angles (roll,pitch, yaw) and rotation matrices.
 Quaternion q has four components:
 - x,y,z: The vector part (axis of rotation)
@@ -75,6 +97,7 @@ All the above four components are calculated on (roll, pitch, yaw) by certain fo
 ```python 
 from tf_transformations import quaternion_from_euler
 from geometry_msgs.msg import Quaternion
+from geometry_msgs.msg import PoseStamped, Quaternion,Point
 class MoveItEEClient(Node):
     def __init__(self):
         super().__init__('rx200_moveit_control')
