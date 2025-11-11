@@ -1,5 +1,6 @@
 ## Documentation 
-https://docs.ros.org/en/foxy/index.html
+https://docs.ros.org/en/foxy/index.html -- oldest version, already EOL
+https://docs.ros.org/en/humble/index.html -- ubuntu 22.04
 
 ### Create ROS2 Packages
 ```bash
@@ -36,11 +37,12 @@ ros2 launch robot_bringup_folder bringup_name # control robots with one terminal
         - my_robot.launch.py # see examples in lesson_2
 
 
-- Check action list and interface after running the ros2 MoveIt code
-```bash
-ros2 action list # there should be a /move_action
-ros2 interface 
-```  
+### Services
+Services are based on a **call-and-response** model, versus topics' publisher-subscriber model. While topics allow nodes to subscribe to data streams and get continual updates. Services only provide data when they are specifically called by a clinet.
+
+#### Server
+#### Clinet
+
 
 ### Declare Parameters in the Terminal
 1. **Define** a parameter that can be set from the terminal
@@ -84,7 +86,6 @@ self.declare_parameter('xs', 0.25)
 # Retrieve and use value passed from the launch file / terminal
 self.x_start = self.get_parameter('xs').value
 ```
-
 
 
 ### Rotation

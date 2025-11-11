@@ -77,3 +77,12 @@ ros2 topic pub /chatter std_msgs/msg/String "{data: 'Cool String123'}" --once
 ```bash
 ros2 topic echo /lala_count
 ```
+
+
+### Services
+```bash
+ros2 service list
+ros2 service type /service_name # Should return std_srvs/srv/Empty. Empty type means the service call sends no data when making a request and receives no data when receiving a response.
+ros2 service find type_name # e.g. ros2 service find std_srvs/src/Empty, to find all the Empty typed services
+ros2 interface show service_type.srv # e.g. ros2 interface show std_srv/srv/Empty.srv, it will return request above --- and response below ---
+```
