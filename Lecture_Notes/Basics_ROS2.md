@@ -37,11 +37,75 @@ ros2 launch robot_bringup_folder bringup_name # control robots with one terminal
         - my_robot.launch.py # see examples in lesson_2
 
 
-### Services
-Services are based on a **call-and-response** model, versus topics' publisher-subscriber model. While topics allow nodes to subscribe to data streams and get continual updates. Services only provide data when they are specifically called by a clinet.
+### Publisher-Subscriber
+- Communication Pattern: One-way, asynchronous
+- Publisher sends messages of a specific type (e.g. std_msgs/Bool) to a topic, subscriber receives messages from that topic and process them.
+- It uses **message types (e.g. std_msgs.msg/Bool)** as it only sends data one way.
+```python
+from std_msgs.msg import Bool
+self.create_subscription(Bool, '/topic_name', self.callback, 10)
+# Only one argument (msg) because the subscriber only needs the incoming message, and the callback gets msg automatically.
+def callback(self, msg):
+    ...
+```
 
-#### Server
-#### Clinet
+### Services (Server-Clinet)
+Services are based on a **call-and-response** model, versus topics' publisher-subscriber model. While topics allow nodes to subscribe to data streams and get continual updates. Services only provide data when they are specifically called by a clinet.
+- Communication Pattern: Request-response, synchronous
+- Service provides a function that clinets can call, client sends a request and waits for a response.
+- It uses **service types (std_srvs.srv/SetBool)** because it needs both a request and a response strucure.
+- Workflow:
+    - Server: Create a Service --> add server / callback function
+        - Process logic based on request
+        - Populates response fields
+        - Return the response (mandatory for client to receive it)
+    - Client: Create a client --> Wait for Service --> Set a timer to send request --> Write a funtion to send request
+        - initiate request
+        - send request asynchronously uses call_async()
+        - register a callback function uses .add_done_callback() to allow client automatically do something (without this step, everything still works but you'd need to manually check future result)
+```python
+from std_srvs.srv import SetBool
+# -------------------- Server Code -------------------- 
+# SetBool is a service type, which defines both request and response fields
+self.creat_service(SetBool, '/motor_relay', self.motor_relay_service_server)
+# The server receives a request and must return a response
+def motor_relay_service_server(self, request, response):
+    # Takes the request from the data field
+    req = request.data
+    # Create a string based on the request
+    string = 'Activated motor' if req else 'Operation failed'
+    # Log it
+    self.get_logger().info(string)
+    # And formulate the response to be returned
+    response.success = True
+    response.message = string
+    return response
+
+# -------------------- Client Code -------------------- 
+self.cli = self.create_clinet(SetBool, 'motor_relay')
+# ROS2 nodes often start at different times. It keeps checking every second until the service is available, otherwise the client may try to send a request before the server is ready, and so the request will fail
+while not self.cli.wait_for_service(1.0):
+    self.get_logger().info('Waiting for server...')
+# Calls self.control_motor() every 3 seconds, without this, the client node will never send requests to server automatically
+self.create_timer(3.0, self.control_motor)
+
+# The client must initiate a request
+def control_motor(self):
+    # Create a request object manually
+    request = SetBool.Request()
+    request.data = True
+    # Then send the request asynchronously using call_async(), it returns a Future object, which represents a result that will be available later
+    # The Future object represents a placeholder for a result that will be available later.
+    future = self.cli.call_async(request)
+    # Register a function to be called when the Future is completed (i.e., when the service response arrives)
+    future.add_done_callback(self.motor_control_future_callback)
+
+def motor_control_future_callback(self, future):
+    self.get_logger().info('Calling from the future')
+    # Access the response
+    response = future.result()
+    self.get_logger().info(f'Service response: {response.message}')
+```
 
 
 ### Declare Parameters in the Terminal
