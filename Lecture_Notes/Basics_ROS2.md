@@ -38,34 +38,62 @@ ros2 launch robot_bringup_folder bringup_name # control robots with one terminal
 
 
 ### Publisher-Subscriber
-- Communication Pattern: One-way, asynchronous
+- Communication Pattern: One-way, **asynchronous**
 - Publisher sends messages of a specific type (e.g. std_msgs/Bool) to a topic, subscriber receives messages from that topic and process them.
 - It uses **message types (e.g. std_msgs.msg/Bool)** as it only sends data one way.
+- Workflow:
+    - Publisher: Create Publisher (define message type & topic name) --> **Publish Data using self.pub.pubish(msg)**
+        - Inside a timer callback if needs a periodic publishing, self.create_timer(1.0, self.pub_function) OR
+        - Inside a subscriber callback or any event-driven function
+    - Subscriber: Create Subscriber (define message type & topic name) --> Define Callback Function
+        - Receives msg automatically
+        - Perform actions based on msg
+        - Publish something if needed
 ```python
-from std_msgs.msg import Bool
-self.create_subscription(Bool, '/topic_name', self.callback, 10)
-# Only one argument (msg) because the subscriber only needs the incoming message, and the callback gets msg automatically.
-def callback(self, msg):
-    ...
+#############################################################
+###################### Subscriber node ######################
+#############################################################
+from std_msgs.msg import String
+class BasicNode(Node):
+    def __init__(self):
+        super().__init__('basic_node')
+        self.sub = self.create_subscription(String, '/topic_name', self.callback, 10)
+        # Only one argument (msg) because the subscriber only needs the incoming message, and the callback gets msg automatically.
+    def callback(self, msg): # it always has msg as an argument because ROS2 injects it
+        self.get_logger().info(msg.data)
+############################################################
+###################### Publisher node ######################
+############################################################
+class pub_node(Node):
+    def __init__(self):
+        super().__init__('publisher_node')
+        self.pub = self.create_publisher(String, '/topic_name', 10)
+        self.timer = self.create_timer(1.0, self.pub_function)
+    def pub_function(self):
+        msg = String()
+        msg.data = 'Hello'
+        self.pub.publish(msg)
 ```
 
-### Services (Server-Clinet)
+### Services (Server-Client)
 Services are based on a **call-and-response** model, versus topics' publisher-subscriber model. While topics allow nodes to subscribe to data streams and get continual updates. Services only provide data when they are specifically called by a clinet.
-- Communication Pattern: Request-response, synchronous
+- Communication Pattern: Request-response, **synchronous**
 - Service provides a function that clinets can call, client sends a request and waits for a response.
 - It uses **service types (std_srvs.srv/SetBool)** because it needs both a request and a response strucure.
 - Workflow:
-    - Server: Create a Service --> add server / callback function
+    - **Server**: Create a Service with service type and topic name --> Define a Callback (request, response)
         - Process logic based on request
         - Populates response fields
         - Return the response (mandatory for client to receive it)
-    - Client: Create a client --> Wait for Service --> Set a timer to send request --> Write a funtion to send request
-        - initiate request
-        - send request asynchronously uses call_async()
-        - register a callback function uses .add_done_callback() to allow client automatically do something (without this step, everything still works but you'd need to manually check future result)
+    - **Client**: Create a Client with service type and topic name --> Wait for Service Availability using wait_for_service() --> **Set a timer to Send Request** --> Write a funtion to send request
+        - initiate request using request = Service_Type.Request()
+        - send request asynchronously uses call_async(). (The reason use call_async() here is using synchronous call() will block the client node until the server responses, while call_async() keeps the client node running while waiting for response.)
+        - register a callback function with .add_done_callback() to handle the response when ready (without this step, everything still works but you'd need to manually check future result)
 ```python
 from std_srvs.srv import SetBool
-# -------------------- Server Code -------------------- 
+#########################################################
+###################### Server Code ######################
+#########################################################
 # SetBool is a service type, which defines both request and response fields
 self.creat_service(SetBool, '/motor_relay', self.motor_relay_service_server)
 # The server receives a request and must return a response
@@ -80,8 +108,9 @@ def motor_relay_service_server(self, request, response):
     response.success = True
     response.message = string
     return response
-
-# -------------------- Client Code -------------------- 
+#########################################################
+###################### Client Code ###################### 
+#########################################################
 self.cli = self.create_clinet(SetBool, 'motor_relay')
 # ROS2 nodes often start at different times. It keeps checking every second until the service is available, otherwise the client may try to send a request before the server is ready, and so the request will fail
 while not self.cli.wait_for_service(1.0):
