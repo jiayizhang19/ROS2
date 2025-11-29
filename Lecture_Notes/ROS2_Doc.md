@@ -1,5 +1,5 @@
 ## Documentation 
-https://docs.ros.org/en/foxy/index.html -- oldest version, already EOL
+https://docs.ros.org/en/foxy/index.html -- oldest version, already EOL  
 https://docs.ros.org/en/humble/index.html -- ubuntu 22.04
 
 ### Create ROS2 Packages
@@ -8,7 +8,7 @@ mkdir folder_name
 cd folder_name
 mkdir src
 cd src
-ros2 pkg create --build-type ament-python robot_pkg_name
+ros2 pkg create --build-type ament_python robot_pkg_name
 # remove a folder
 rm -rf folder_name
 ```
