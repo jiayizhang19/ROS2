@@ -59,14 +59,19 @@ class MoveItEEClient(Node):
             10
         )
         
-        
       
         self.declare_parameter('linear', False)
+        self.declare_parameter('xs', 0.35)
+        self.declare_parameter('ys', 0.00)
+        self.declare_parameter('zs', 0.05)
         self.declare_parameter('xg', 0.35)
         self.declare_parameter('yg', 0.00)
         self.declare_parameter('zg', 0.05)
 
         self.linear_move_enabled = self.get_parameter('linear').value
+        self.x_start = self.get_parameter('xs').value
+        self.y_start = self.get_parameter('ys').value
+        self.z_start = self.get_parameter('zs').value
         self.x_goal = self.get_parameter('xg').value
         self.y_goal = self.get_parameter('yg').value
         self.z_goal = self.get_parameter('zg').value
@@ -79,7 +84,7 @@ class MoveItEEClient(Node):
 
         self.verbose = (self.poses['debug']['verbose'])
         
-        # self.start_point = (self.x_start, self.y_start, self.z_start)
+        self.start_point = (self.x_start, self.y_start, self.z_start)
         self.goal_point = (self.x_goal, self.y_goal, self.z_goal)
 
         # #Future Check for Start and Goal Points will be done with a separate Node.
@@ -95,7 +100,7 @@ class MoveItEEClient(Node):
         # point_msg.z = self.z_goal
         # self.point_input_pub.publish(point_msg)
 
-        # self.get_logger().info(f'Start point: {self.start_point}') 
+        self.get_logger().info(f'Start point: {self.start_point}') 
         self.get_logger().info(f'Goal point: {self.goal_point}') 
         
         self.z_up = self.poses['z_axis_up']
@@ -169,18 +174,22 @@ class MoveItEEClient(Node):
     
 
     def stack_sequence_callback(self, msg: String):
-        stack_seq = self.get_cubes(msg)
-        if not self.goal_point:
-            
-            self.goal_point = stack_seq[0]
+        self.get_cubes_poses(msg)
+        self.reset_to_home()
+        for i in range(len(self.colors)):
+            color = self.colors[i]
+            cube_pose = self.cubes[i]
+            self.get_logger().info(f'Moving to the {color.upper()} cube in {cube_pose}.')
+            self.free_move(start_pose=cube_pose, target_pose=self.goal_point, gripper_width=0.025, num=i)
+        time.sleep(3.0)
+        self.reset_to_home()
 
 
-    def get_cubes(self, msg: String):
+    def get_cubes_poses(self, msg: String):
         stack_seq = json.loads(msg.data)
         self.get_logger().info(f'Receving stack sequence from stack manager: {stack_seq}')
-
-
-        return stack_seq
+        self.colors, self.cubes = zip(*stack_seq.items())
+        self.get_logger().info(f'Colors: {self.colors}, cubes: {self.cubes}')
 
 
 
@@ -196,29 +205,40 @@ class MoveItEEClient(Node):
         else:
             self.free_move()
 
-    def free_move(self):
-        start_gripper_state = self.start_gripper_state
+    def reset_to_home(self):
         self.get_logger().info('Reset to Home position')        
         self.send_ee_pose(*self.safe_pose_lower, True)  # move to the safe place first
+
+    def free_move(self, start_pose, target_pose, gripper_width, num):
+        start_x, start_y, start_z = start_pose
+        target_x, target_y, target_z = target_pose
+        target_z += num * 0.05
+        start_gripper_state = self.start_gripper_state
         self.get_logger().info('Opening Gripper')
-        self.send_gr_pose(start_gripper_state)
-        self.get_logger().info('Moving to pick object at Start Point')
-        self.send_ee_pose(self.x_start, self.y_start, self.z_start, False)  # lower to start pose
+        self.send_gr_pose(start_gripper_state, gripper_width + 0.02)
+        self.get_logger().info('Moving above the start point')
+        self.send_ee_pose(start_x, start_y, start_z + self.z_up, False)  # move above start pose
+        self.get_logger().info('Lower to the start point')
+        self.send_ee_pose(start_x, start_y, start_z, False)  # lower to start pose
         self.get_logger().info('Closing Gripper')
-        self.send_gr_pose(open=False)  # close gripper
-        self.send_ee_pose(self.x_start, self.y_start, self.z_start + self.z_up, False)  # move above start pose        
-        self.send_ee_pose(self.x_goal, self.y_goal, self.z_goal + self.z_up, False)  # move above target pose  
+        self.send_gr_pose(open, gripper_width)  # close gripper
+        self.get_logger().info('Moving above the start point')
+        self.send_ee_pose(start_x, start_y, start_z + self.z_up, False)  # move above start pose   
+        self.get_logger().info('Moving above the target point')     
+        self.send_ee_pose(target_x, target_y, target_z + self.z_up, False)  # move above target pose  
         time.sleep(3.0) # This move wehn in quadrant (-x, -y) needs more time for some reason!!
-        self.get_logger().info('Moving to drop object at Goal Point')
-        self.send_ee_pose(self.x_goal, self.y_goal, self.z_goal, False)  # move to target pose
+        self.get_logger().info('Lower to the target point')
+        self.send_ee_pose(target_x, target_y, target_z, False)  # move to target pose
         self.get_logger().info('Opening Gripper')
-        self.send_gr_pose(start_gripper_state)  # open gripper      
-        self.get_logger().info('Returning to Home position') 
+        self.send_gr_pose(open, gripper_width + 0.02)  # open gripper      
         time.sleep(4.0) 
-        self.send_ee_pose(self.x_goal, self.y_goal, self.z_goal + self.z_up, False)  # move above target pose  
+        self.get_logger().info('Moving above the target point')
+        self.send_ee_pose(target_x, target_y, target_z + self.z_up, False)  # move above target pose  
+        self.get_logger().info('Moving to a smaller y to avoid collision')
+        self.send_ee_pose(target_x, target_y - 0.1, target_z + self.z_up, False) # move to a safe y to avoid collision with cubes
+        self.get_logger().info('Returning to Home position') 
         self.send_ee_pose(*self.safe_pose, True)  # move to the safe place
-        time.sleep(3.0)
-        self.send_ee_pose(*self.safe_pose_lower, True)  # move to the safe place
+        
     
     def linear_move(self, steps):        
         #start_gripper_state = self.start_gripper_state
@@ -332,7 +352,7 @@ class MoveItEEClient(Node):
         else:
             return self.vertical_pitch
         
-    def send_gr_pose(self, open):
+    def send_gr_pose(self, open, width):
         time.sleep(5.0)
         if self.verbose: self.get_logger().info(f'start_gripper_state: {open}') 
         req = MotionPlanRequest()
@@ -342,7 +362,7 @@ class MoveItEEClient(Node):
 
         jc =JointConstraint()
         jc.joint_name = self.gripper_joint
-        jc.position = 0.038 if open else 0.01
+        jc.position = width if open else 0.01
         jc.tolerance_above = 0.01
         jc.tolerance_below = 0.01
 

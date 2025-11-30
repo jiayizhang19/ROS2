@@ -1,18 +1,18 @@
-#Enable disable debug messages
+# Enable disable debug messages
 debug:
   verbose: false
 
-#Movement up/down on Z axis after picking/dropping object
-z_axis_up: 0.26
+# Movement up/down on Z axis after picking/dropping object
+z_axis_up: 0.1
 
-#Return to Sleep in two steps - avoid hitting the resting fork
+# Return to Sleep in two steps - avoid hitting the resting fork
 safe_pose:
   x: 0.12
   y: 0.0
   z: 0.21
   z_lower: 0.084
 
-#Chose between Moveit free move and short linear steps
+# Chose between Moveit free move and short linear steps
 linear_move:
 #  enabled: false
   steps: 4
