@@ -14,9 +14,9 @@ def generate_launch_description():
 
     color_seq = DeclareLaunchArgument('color_seq', default_value='', description='Customed color sequence of cube stacking')
 
-    goal_x = DeclareLaunchArgument('xg', default_value='0.35', description='x coordinate goal postion')
-    goal_y = DeclareLaunchArgument('yg', default_value='0.00', description='y coordinate goal postion')
-    goal_z = DeclareLaunchArgument('zg', default_value='0.05', description='z coordinate goal postion')
+    goal_x = DeclareLaunchArgument('xg', default_value='0.0', description='x coordinate goal postion')
+    goal_y = DeclareLaunchArgument('yg', default_value='0.4', description='y coordinate goal postion')
+    goal_z = DeclareLaunchArgument('zg', default_value='0.0', description='z coordinate goal postion')
 
     linear_move = DeclareLaunchArgument('linear', default_value='False', description='Linear Movement on long distance')
 

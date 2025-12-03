@@ -17,22 +17,17 @@
 
 
 ```
-#===============================================================================#
-#==================== Used for Jiayi's Intergrated Test Only ===================#
-#===============================================================================#
+# =============================================================================== #
+# ==================== Used for Jiayi's Intergrated Test Only =================== #
+# =============================================================================== #
 ```
 Command to run stack_manager:
 ```bash
+ros2 launch robot_bringup rx200_control_only.launch.py color_seq:='yellow, red, blue'
 ros2 launch robot_bringup rx200_control_only.launch.py xg:=0.0 yg:=0.4 zg:=0.0 color_seq:='yellow, red, blue'
 ```
 
 Command to publish coordinates to /object_detection
 ```bash
 ros2 topic pub /object_detection std_msgs/msg/String "{data: 'red:0.1,0.20,0; blue:0.2,-0.2,0; yellow:0.10,-0.2,0'}"  --once
-```
-
-Command to echo on topics
-```bash
-ros2 topic echo /object_detection
-ros2 topic echo /stack_sequence
 ```

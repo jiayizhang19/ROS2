@@ -44,65 +44,28 @@ class MoveItEEClient(Node):
             self.stack_sequence_callback,
             10
         )
-        
-        self.point_input_pub = self.create_publisher(
-            Point, 
-            '/point_input', 
-            10        
-        )
-        self.get_logger().info('Point Input Pub Node initialized successfully')
-
-        self.safety_check_sub = self.create_subscription(
-            Bool,
-            '/point_safety_check',
-            self.point_safety_check_callback,
-            10
-        )
-        
-      
+        # ================================================================================== #
+        # ========== Declare and get parameters from user input or default values ========== #
+        # ================================================================================== #
         self.declare_parameter('linear', False)
-        self.declare_parameter('xs', 0.35)
-        self.declare_parameter('ys', 0.00)
-        self.declare_parameter('zs', 0.05)
-        self.declare_parameter('xg', 0.35)
-        self.declare_parameter('yg', 0.00)
-        self.declare_parameter('zg', 0.05)
-
+        self.declare_parameter('xg', 0.0)
+        self.declare_parameter('yg', 0.4)
+        self.declare_parameter('zg', 0.0)
         self.linear_move_enabled = self.get_parameter('linear').value
-        self.x_start = self.get_parameter('xs').value
-        self.y_start = self.get_parameter('ys').value
-        self.z_start = self.get_parameter('zs').value
         self.x_goal = self.get_parameter('xg').value
         self.y_goal = self.get_parameter('yg').value
         self.z_goal = self.get_parameter('zg').value
-
+        self.goal_point = (self.x_goal, self.y_goal, self.z_goal)
+        self.get_logger().info(f'Goal point: {self.goal_point}') 
+        # ================================================================================== #
+        # ===================== Load static parameters from YAML file ====================== #
+        # ================================================================================== #
         self.yaml_dir = os.path.join(
              get_package_share_directory('rx200_moveit_control'),
              'config',
          )        
         self.poses = self.load_from_yaml(self.yaml_dir, 'poses.yaml')
-
         self.verbose = (self.poses['debug']['verbose'])
-        
-        self.start_point = (self.x_start, self.y_start, self.z_start)
-        self.goal_point = (self.x_goal, self.y_goal, self.z_goal)
-
-        # #Future Check for Start and Goal Points will be done with a separate Node.
-        # point_msg = Point()
-        # point_msg.x = self.x_start 
-        # point_msg.y = self.y_start
-        # point_msg.z = self.z_start
-        # self.point_input_pub.publish(point_msg)
-
-        # point_msg = Point()
-        # point_msg.x = self.x_goal
-        # point_msg.y = self.y_goal
-        # point_msg.z = self.z_goal
-        # self.point_input_pub.publish(point_msg)
-
-        self.get_logger().info(f'Start point: {self.start_point}') 
-        self.get_logger().info(f'Goal point: {self.goal_point}') 
-        
         self.z_up = self.poses['z_axis_up']
         self.safe_pose = (
             self.poses['safe_pose']['x'],
@@ -114,14 +77,8 @@ class MoveItEEClient(Node):
             self.poses['safe_pose']['y'],
             self.poses['safe_pose']['z_lower'],
         )           
-        
         self.linear_move_steps = self.poses['linear_move']['steps']
         self.start_gripper_state = self.poses['gripper']['start_gripper_state']
-         
-        if self.verbose: self.get_logger().info(f'x_goal: {self.x_goal}') 
-        if self.verbose: self.get_logger().info(f'y_goal: {self.y_goal}') 
-        if self.verbose: self.get_logger().info(f'z_goal: {self.z_goal}')                        
-        
         #Default Base radius 
         self.base_radius = self.poses['no_go_zone']['base_radius']
         #Default Out reach circunsference
@@ -133,56 +90,63 @@ class MoveItEEClient(Node):
         self.y2 = self.poses['no_go_zone']['y2']
         #Safe Z hight to move on top of base circle or base
         self.z_hieght_safe = 0.15
-        
         #Default radius to decide on pitch = 0.0 or pitch = 1.57
         self.radius_pitch = self.poses['pitch_area']['radius_pitch']
-        
         #Default Base Box area to define pitch = 0.0 or pitch 1.57
         self.x1_pitch = self.poses['pitch_area']['x1_pitch']
         self.x2_pitch = self.poses['pitch_area']['x2_pitch']
         self.y1_pitch = self.poses['pitch_area']['y1_pitch']
         self.y2_pitch = self.poses['pitch_area']['y2_pitch']
-                
         #pitch angles
         self.horizontal_pitch = self.poses['pitch_angles']['horizontal_pitch']
         self.vertical_pitch = self.poses['pitch_angles']['vertical_pitch']
         self.home_pitch = self.poses['pitch_angles']['home_pitch']
-            
-        #Check Pick up and drop off location. Make sure not inside the base circle or box
-        if self.base_circle_box_inside(self.x_start, self.y_start, self.z_start):
-            self.get_logger().info(f'Unsafe pick up location inside arm base x:{self.x_start} y:{self.y_start} z:{self.z_start}')
-            rclpy.shutdown()
-            sys.exit(0)
-        if self.base_circle_box_inside(self.x_goal, self.y_goal, self.z_goal):
-            self.get_logger().info(f'Unsafe drop off location inside arm base x:{self.x_goal} y:{self.y_goal} z:{self.z_goal}') 
-            rclpy.shutdown()
-            sys.exit(0)
-        #Check Pick up and drop off location. Make sure not beyond arm's reach    
-        if self.out_arm_reach_area(self.x_start, self.y_start, self.z_start):
-            self.get_logger().info(f'Too far pick up location beyond arm reach x:{self.x_start} y:{self.y_start} z:{self.z_start}')
-            rclpy.shutdown()
-            sys.exit(0)
-        if self.out_arm_reach_area(self.x_goal, self.y_goal, self.z_goal):
-            self.get_logger().info(f'Too far drop off location beyond arm reach x:{self.x_goal} y:{self.y_goal} z:{self.z_goal}') 
-            rclpy.shutdown()
-            sys.exit(0)
-    
-    #Simple Function to try communication between Nodes
-    def point_safety_check_callback(self, msg: Bool):
-        self.get_logger().info(f'Received safety check result: {msg.data}')
-        self.is_safety_check_passed = msg.data
-    
+
 
     def stack_sequence_callback(self, msg: String):
+        # Safety check on the goal point
+        if not self.point_safety_check('goal', self.goal_point):
+            self.get_logger().info('GOAL position safety check failed. Exiting stacking cubes.')
+            rclpy.shutdown()
+            sys.exit(0)
+        # Get cubes poses from the message
         self.get_cubes_poses(msg)
-        self.reset_to_home()
+        # Safety check on each cube point
+        self.colors_checked = []
+        self.cubes_checked = []
         for i in range(len(self.colors)):
             color = self.colors[i]
             cube_pose = self.cubes[i]
+            if self.point_safety_check(color, cube_pose):
+                self.colors_checked.append(color)
+                self.cubes_checked.append(cube_pose)
+        # Stack the checked cubes
+        self.reset_to_home()
+        for i in range(len(self.colors_checked)):
+            color = self.colors_checked[i]
+            cube_pose = self.cubes_checked[i]
             self.get_logger().info(f'Moving to the {color.upper()} cube in {cube_pose}.')
-            self.free_move(start_pose=cube_pose, target_pose=self.goal_point, gripper_width=0.025, num=i)
+            self.move(start_pose=cube_pose, target_pose=self.goal_point, gripper_width=0.03, num=i)
         time.sleep(3.0)
         self.reset_to_home()
+
+
+    # Point safety check. Make sure it is not inside the base circle or box
+    def point_safety_check(self, color, point):
+        safety_check_failed = 0
+        safety_check_status = True
+        if self.base_circle_box_inside(*point):
+            self.get_logger().info(f'{color.upper()} position {point} is inside arm base!')
+            safety_check_failed += 1
+        if self.out_arm_reach_area(*point):
+            self.get_logger().info(f'{color.upper()} position {point} is beyond arm reach!') 
+            safety_check_failed += 1
+        if safety_check_failed > 0:
+            self.get_logger().info(f'{color.upper()} position safety check failed. Skip stacking it.')
+            safety_check_status = False
+        else:
+            self.get_logger().info(f'{color.upper()} position {point} passed safety check.')
+        return safety_check_status
 
 
     def get_cubes_poses(self, msg: String):
@@ -192,86 +156,62 @@ class MoveItEEClient(Node):
         self.get_logger().info(f'Colors: {self.colors}, cubes: {self.cubes}')
 
 
-
     def load_from_yaml(self, dir, file):
         path = os.path.join(dir, file)
         print(f'Loading poses from: {path}')
         with open(path, 'r') as file:
             return yaml.safe_load(file)
 
-    def movement_strategy(self):
-        if self.linear_move_enabled:
-            self.linear_move(self.linear_move_steps)
-        else:
-            self.free_move()
 
     def reset_to_home(self):
         self.get_logger().info('Reset to Home position')        
         self.send_ee_pose(*self.safe_pose_lower, True)  # move to the safe place first
 
-    def free_move(self, start_pose, target_pose, gripper_width, num):
+
+    def move(self, start_pose, target_pose, gripper_width, num):
         start_x, start_y, start_z = start_pose
         target_x, target_y, target_z = target_pose
         target_z += num * 0.05
-        start_gripper_state = self.start_gripper_state
+        start_z_up = start_z + self.z_up
+        target_z_up = target_z + self.z_up
         self.get_logger().info('Opening Gripper')
-        self.send_gr_pose(start_gripper_state, gripper_width + 0.02)
+        self.send_gr_pose(grasp=False)  # open gripper
         self.get_logger().info('Moving above the start point')
-        self.send_ee_pose(start_x, start_y, start_z + self.z_up, False)  # move above start pose
+        self.send_ee_pose(start_x, start_y, start_z_up, False)  # move above start pose
         self.get_logger().info('Lower to the start point')
         self.send_ee_pose(start_x, start_y, start_z, False)  # lower to start pose
         self.get_logger().info('Closing Gripper')
-        self.send_gr_pose(open, gripper_width)  # close gripper
+        self.send_gr_pose(grasp=True, width=gripper_width)  # close gripper
         self.get_logger().info('Moving above the start point')
-        self.send_ee_pose(start_x, start_y, start_z + self.z_up, False)  # move above start pose   
-        self.get_logger().info('Moving above the target point')     
-        self.send_ee_pose(target_x, target_y, target_z + self.z_up, False)  # move above target pose  
+        self.send_ee_pose(start_x, start_y, start_z_up, False)  # move above start pose   
+        self.get_logger().info('Moving above the target point')   
+        # Linear move in between start and target if enabled
+        if self.linear_move_enabled:
+            waypoints = self.linear_waypoints(
+                (start_x, start_y, start_z_up),
+                (target_x, target_y, target_z_up),
+                steps=self.linear_move_steps
+            )
+            for waypoint in waypoints:
+                x, y, z = waypoint
+                if self.verbose: self.get_logger().info(f'Moving to: ({x:.3f} {y:.3f} {start_z_up:.3f})')         
+                self.send_ee_pose(x, y, z, False) 
+        # Free move to target if linear move not enabled
+        else:
+            self.send_ee_pose(target_x, target_y, target_z_up, False)  # move above target pose  
         time.sleep(3.0) # This move wehn in quadrant (-x, -y) needs more time for some reason!!
         self.get_logger().info('Lower to the target point')
         self.send_ee_pose(target_x, target_y, target_z, False)  # move to target pose
         self.get_logger().info('Opening Gripper')
-        self.send_gr_pose(open, gripper_width + 0.02)  # open gripper      
+        self.send_gr_pose(grasp=False)  # open gripper      
         time.sleep(4.0) 
         self.get_logger().info('Moving above the target point')
-        self.send_ee_pose(target_x, target_y, target_z + self.z_up, False)  # move above target pose  
+        self.send_ee_pose(target_x, target_y, target_z_up, False)  # move above target pose  
         self.get_logger().info('Moving to a smaller y to avoid collision')
-        self.send_ee_pose(target_x, target_y - 0.1, target_z + self.z_up, False) # move to a safe y to avoid collision with cubes
+        self.send_ee_pose(target_x, target_y - 0.1, target_z_up, False) # move to a safe y to avoid collision with cubes
         self.get_logger().info('Returning to Home position') 
         self.send_ee_pose(*self.safe_pose, True)  # move to the safe place
         
-    
-    def linear_move(self, steps):        
-        #start_gripper_state = self.start_gripper_state
-        z_start_up = self.z_start + self.z_up
-        z_goal_up = self.z_goal + self.z_up
-        waypoints = self.linear_waypoints(
-            (self.x_start, self.y_start, z_start_up),
-            (self.x_goal, self.y_goal, z_goal_up),
-            steps
-        )
-        self.get_logger().info('Reset to Home position')        
-        self.send_ee_pose(*self.safe_pose_lower, True)  # Start from a safe pose
-        self.get_logger().info('Opening Gripper')
-        self.send_gr_pose(self.start_gripper_state)
-        self.get_logger().info('Moving to pick object at Start Point')
-        self.send_ee_pose(self.x_start, self.y_start, self.z_start,False)  # Move to the start pose
-        self.get_logger().info('Closing Gripper')
-        self.send_gr_pose(False)  # Close gripper
-        self.send_ee_pose(self.x_start, self.y_start, z_start_up, False) # Move above the start pose
-        for waypoint in waypoints:
-            x, y, z = waypoint
-            if self.verbose: self.get_logger().info(f'Moving to: ({x:.3f} {y:.3f} {z_start_up:.3f})')         
-            self.send_ee_pose(x, y, z, False) 
-        self.get_logger().info('Moving to drop object at Goal Point')
-        self.send_ee_pose(self.x_goal, self.y_goal, self.z_goal, False)  # Lower to the goal pose
-        self.get_logger().info('Opening Gripper')
-        self.send_gr_pose(self.start_gripper_state)  # Open gripper
-        #self.send_ee_pose(x_goal, y_goal, z_goal_up, False)  # Move above the goal pose
-        self.get_logger().info('Returning to Home position') 
-        time.sleep(4.0)
-        self.send_ee_pose(*self.safe_pose, True)  # move to the safe place
-        time.sleep(3.0)
-        self.send_ee_pose(*self.safe_pose_lower, True)  # move to the safe place
 
     def linear_waypoints(self, start, goal, steps):
         waypoints = []
@@ -352,8 +292,8 @@ class MoveItEEClient(Node):
         else:
             return self.vertical_pitch
         
-    def send_gr_pose(self, open, width):
-        time.sleep(5.0)
+    def send_gr_pose(self, grasp, width=None):
+        time.sleep(3.0)
         if self.verbose: self.get_logger().info(f'start_gripper_state: {open}') 
         req = MotionPlanRequest()
         req.group_name = self.group_name_gripper
@@ -362,7 +302,16 @@ class MoveItEEClient(Node):
 
         jc =JointConstraint()
         jc.joint_name = self.gripper_joint
-        jc.position = width if open else 0.01
+        if grasp:
+            if width is None:
+                self.get_logger().info('Cubde width was not provided for closing gripper')
+                return
+            grasp_width = width * 0.95 # slightly less to ensure a tight grip
+            jc.position = grasp_width
+            self.get_logger().info(f'Gripper closing to width: {grasp_width:.3f}m for cube width {width:.3f}m')
+        else:
+            jc.position = 0.045  # open position
+            self.get_logger().info('Gripper opening to max width: 0.045m')
         jc.tolerance_above = 0.01
         jc.tolerance_below = 0.01
 
@@ -374,13 +323,6 @@ class MoveItEEClient(Node):
         goal.request = req
         #Original Setting
         goal.planning_options.plan_only = False
-
-        #Change settings to avoid singularities and remove delays.
-        #goal.planning_options.plan_only = False 
-        #goal.planning_options.replan = True
-        #goal.planning_options.replan_attempts = 2
-        #goal.planning_options.replan_delay = 3.0
-
         send_future = self._client.send_goal_async(goal)
         send_future.add_done_callback(self._goal_response_cb)
 
@@ -467,24 +409,12 @@ class MoveItEEClient(Node):
         #result = future.result().result
         result_msg = future.result().result
         code = getattr(result_msg.error_code, 'val', 'unknown')
-        self.get_logger().info(f'[Result] error_code {code}')
-        
-        # Publish DisplayTrajectory so RViz can show the path
-        #if code == 1:  # SUCCESS        
-        #    display_msg = DisplayTrajectory()
-        #    display_msg.model_id = self.base_link 
-            #display_msg.model_id = "rx200"
-        #    display_msg.trajectory_start = result_msg.trajectory_start
-        #    display_msg.trajectory.append(result_msg.planned_trajectory)
-        #    self.display_pub.publish(display_msg)
-        #    self.get_logger().info("Published planned trajectory to /display_planned_path.")
-        #else:        
+        self.get_logger().info(f'[Result] error_code {code}')        
         self.get_logger().info(f'[Result] error_code {code}')
 
 def main():
     rclpy.init()
     node = MoveItEEClient()
-    # node.movement_strategy()
     rclpy.spin(node)
     rclpy.shutdown()
 
