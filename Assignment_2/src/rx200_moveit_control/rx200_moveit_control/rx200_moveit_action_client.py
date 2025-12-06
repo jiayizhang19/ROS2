@@ -65,6 +65,7 @@ class MoveItEEClient(Node):
              'config',
          )        
         self.poses = self.load_from_yaml(self.yaml_dir, 'poses.yaml')
+        self.cube_width = self.poses['cube_width']
         self.verbose = (self.poses['debug']['verbose'])
         self.z_up = self.poses['z_axis_up']
         self.safe_pose = (
@@ -126,7 +127,7 @@ class MoveItEEClient(Node):
             color = self.colors_checked[i]
             cube_pose = self.cubes_checked[i]
             self.get_logger().info(f'Moving to the {color.upper()} cube in {cube_pose}.')
-            self.move(start_pose=cube_pose, target_pose=self.goal_point, gripper_width=0.03, num=i)
+            self.move(start_pose=cube_pose, target_pose=self.goal_point, cube_width=self.cube_width, num=i)
         time.sleep(3.0)
         self.reset_to_home()
 
@@ -168,7 +169,7 @@ class MoveItEEClient(Node):
         self.send_ee_pose(*self.safe_pose_lower, True)  # move to the safe place first
 
 
-    def move(self, start_pose, target_pose, gripper_width, num):
+    def move(self, start_pose, target_pose, cube_width, num):
         start_x, start_y, start_z = start_pose
         target_x, target_y, target_z = target_pose
         target_z += num * 0.05
@@ -181,7 +182,7 @@ class MoveItEEClient(Node):
         self.get_logger().info('Lower to the start point')
         self.send_ee_pose(start_x, start_y, start_z, False)  # lower to start pose
         self.get_logger().info('Closing Gripper')
-        self.send_gr_pose(grasp=True, width=gripper_width)  # close gripper
+        self.send_gr_pose(grasp=True, gripper_width=cube_width/2)  # close gripper
         self.get_logger().info('Moving above the start point')
         self.send_ee_pose(start_x, start_y, start_z_up, False)  # move above start pose   
         self.get_logger().info('Moving above the target point')   
@@ -292,7 +293,7 @@ class MoveItEEClient(Node):
         else:
             return self.vertical_pitch
         
-    def send_gr_pose(self, grasp, width=None):
+    def send_gr_pose(self, grasp, gripper_width=None):
         time.sleep(3.0)
         if self.verbose: self.get_logger().info(f'start_gripper_state: {open}') 
         req = MotionPlanRequest()
@@ -303,12 +304,12 @@ class MoveItEEClient(Node):
         jc =JointConstraint()
         jc.joint_name = self.gripper_joint
         if grasp:
-            if width is None:
+            if gripper_width is None:
                 self.get_logger().info('Cubde width was not provided for closing gripper')
                 return
-            grasp_width = width * 0.95 # slightly less to ensure a tight grip
+            grasp_width = gripper_width * 0.95 # slightly less to ensure a tight grip
             jc.position = grasp_width
-            self.get_logger().info(f'Gripper closing to width: {grasp_width:.3f}m for cube width {width:.3f}m')
+            self.get_logger().info(f'Gripper closing to width: {grasp_width*2:.3f}m for cube width {gripper_width*2:.3f}m')
         else:
             jc.position = 0.045  # open position
             self.get_logger().info('Gripper opening to max width: 0.045m')

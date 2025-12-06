@@ -29,7 +29,6 @@ setup(
     entry_points={
         'console_scripts': [
         'rx200_moveit_client=rx200_moveit_control.rx200_moveit_action_client:main',
-        'point_safety_checker=rx200_moveit_control.point_safety_checker:main',
         'stack_manager=rx200_moveit_control.stack_manager:main'
         ],
     },

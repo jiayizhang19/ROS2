@@ -16,7 +16,7 @@ def generate_launch_description():
 
     goal_x = DeclareLaunchArgument('xg', default_value='0.0', description='x coordinate goal postion')
     goal_y = DeclareLaunchArgument('yg', default_value='0.4', description='y coordinate goal postion')
-    goal_z = DeclareLaunchArgument('zg', default_value='0.0', description='z coordinate goal postion')
+    goal_z = DeclareLaunchArgument('zg', default_value='0.025', description='z coordinate goal postion')
 
     linear_move = DeclareLaunchArgument('linear', default_value='False', description='Linear Movement on long distance')
 
@@ -27,12 +27,6 @@ def generate_launch_description():
         parameters=[{
             'color_seq': LaunchConfiguration('color_seq')
         }]
-    )
-
-    safety_checker = Node(
-        package='rx200_moveit_control',
-        executable='point_safety_checker',
-        name='point_safety_checker',
     )
 
     moveit_control = Node(
